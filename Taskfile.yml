@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+version: "3"
+vars:
+  BUILD_VERSION:
+    sh: echo ${BUILD_VERSION:-$(git describe --tags --exact-match ${GIT_REF:-HEAD} 2>/dev/null || echo "dev")}
+  BUILD_GIT_REF:
+    sh: echo ${BUILD_GIT_REF:-$(git rev-parse --verify ${GIT_REF:-HEAD})}
+  BUILD_TIMESTAMP:
+    sh: echo ${BUILD_TIMESTAMP:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}
+tasks:
+  lint:
+    cmd: golangci-lint run --fix ./...
+  fmt:
+    cmds:
+      - golangci-lint fmt ./...
+      - go run github.com/shoenig/go-modtool@latest -w fmt go.mod
+  deps:
+    cmds:
+      - go get -u ./...
+  generate:
+    cmds:
+      - go generate ./...
+  build:
+    cmd: go build -o ./bin/ldap-image-proxy ./cmd/ldap-image-proxy
+  build-static:
+    env:
+      CGO_ENABLED: "0"
+    cmd: |
+      go build \
+        -o ./bin/ldap-image-proxy \
+        -tags netgo \
+        -ldflags "\
+          -s \
+          -w \
+          -extldflags '-static' \
+          -X 'git.sr.ht/~icikowski/ldap-image-proxy/internal/buildinfo.version={{.BUILD_VERSION}}' \
+          -X 'git.sr.ht/~icikowski/ldap-image-proxy/internal/buildinfo.gitref={{.BUILD_GIT_REF}}' \
+          -X 'git.sr.ht/~icikowski/ldap-image-proxy/internal/buildinfo.timestamp={{.BUILD_TIMESTAMP}}' \
+        " \
+        ./cmd/ldap-image-proxy
+  build-healthcheck:
+    env:
+      CGO_ENABLED: "0"
+    cmd: |
+      go build \
+        -o ./bin/healthcheck \
+        -tags netgo \
+        -ldflags "\
+          -s \
+          -w \
+          -extldflags '-static' \
+        " \
+        ./cmd/healthcheck
+  run:
+    cmd: go run ./cmd/ldap-image-proxy
+  test:
+    cmd: go test -race -v ./...
